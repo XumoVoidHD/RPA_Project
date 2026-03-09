@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>SmartGov – Admin Login</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 2rem;
+        }
+        form {
+            max-width: 320px;
+        }
+        label {
+            display: block;
+            margin-top: 1rem;
+        }
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 0.5rem;
+        }
+        button {
+            margin-top: 1.5rem;
+            padding: 0.5rem 1rem;
+        }
+        .error {
+            color: red;
+            margin-top: 1rem;
+        }
+        .hint {
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+            color: #555;
+        }
+        code {
+            background-color: #f0f0f0;
+            padding: 0 0.25rem;
+        }
+    </style>
+</head>
+<body>
+<h1>Admin Login</h1>
+
+<form method="post" action="/admin/login">
+    <label for="username">Username</label>
+    <input type="text" id="username" name="username" required />
+
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" required />
+
+    <button type="submit">Login</button>
+</form>
+
+{% if error %}
+    <div class="error">{{ error }}</div>
+{% endif %}
+
+<div class="hint">
+    <p>Demo admin accounts (for local testing only):</p>
+    <ul>
+        <li><code>publicworks / public123</code> – Public Works</li>
+        <li><code>sanitation / clean123</code> – Sanitation</li>
+        <li><code>water / water123</code> – Water Department</li>
+        <li><code>electricity / power123</code> – Electricity</li>
+        <li><code>general / general123</code> – General Department</li>
+    </ul>
+</div>
+
+</body>
+</html>
+

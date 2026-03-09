@@ -1,0 +1,8 @@
+{
+  "publicworks": { "password": "public123", "department": "Public Works" },
+  "sanitation":  { "password": "clean123",  "department": "Sanitation" },
+  "water":       { "password": "water123",  "department": "Water Department" },
+  "electricity": { "password": "power123",  "department": "Electricity" },
+  "general":     { "password": "general123", "department": "General Department" }
+}
+

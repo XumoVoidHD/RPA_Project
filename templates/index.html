@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>SmartGov – Complaint Registration</title>
+    <!-- Minimal styling; functionality is the focus -->
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 2rem;
+        }
+        form {
+            max-width: 480px;
+        }
+        label {
+            display: block;
+            margin-top: 1rem;
+        }
+        input[type="text"],
+        textarea {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 0.5rem;
+        }
+        button {
+            margin-top: 1.5rem;
+            padding: 0.5rem 1rem;
+        }
+        #message {
+            margin-top: 1rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+<h1>SmartGov – Public Complaint Registration</h1>
+
+<form id="complaintForm" enctype="multipart/form-data">
+    <label for="subject">Subject</label>
+    <input type="text" id="subject" name="subject" required />
+
+    <label for="description">Description</label>
+    <textarea id="description" name="description" rows="4" required></textarea>
+
+    <label for="location">Location</label>
+    <input type="text" id="location" name="location" required />
+
+    <label for="image">Image (optional)</label>
+    <input type="file" id="image" name="image" accept="image/*" />
+
+    <button type="submit">Submit Complaint</button>
+</form>
+
+<div id="message"></div>
+
+<script>
+    // Handle form submission using Fetch API to stay on the same page
+    const form = document.getElementById("complaintForm");
+    const messageDiv = document.getElementById("message");
+
+    form.addEventListener("submit", async function (event) {
+        event.preventDefault();
+        messageDiv.textContent = "";
+
+        const formData = new FormData(form);
+
+        try {
+            const response = await fetch("/submit-complaint", {
+                method: "POST",
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error("Network response was not ok");
+            }
+
+            const data = await response.json();
+            if (data && data.message) {
+                messageDiv.textContent = data.message;
+                messageDiv.style.color = "green";
+                form.reset();
+            } else {
+                messageDiv.textContent = "Complaint submitted, but no message returned.";
+                messageDiv.style.color = "green";
+            }
+        } catch (error) {
+            console.error(error);
+            messageDiv.textContent = "There was an error submitting your complaint. Please try again.";
+            messageDiv.style.color = "red";
+        }
+    });
+</script>
+</body>
+</html>
+
