@@ -18,6 +18,7 @@ class ComplaintStatus(str, Enum):
     RESOLVED = "RESOLVED"
     CLOSED = "CLOSED"
     CANCELLED = "CANCELLED"
+    ESCALATED = "ESCALATED"
 
 
 class Complaint(Base):

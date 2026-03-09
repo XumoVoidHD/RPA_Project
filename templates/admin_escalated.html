@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>SmartGov – Escalated Complaints ({{ department }})</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 2rem;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 1rem;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 0.5rem;
+            text-align: left;
+        }
+        th {
+            background-color: #f0f0f0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            margin: 0;
+        }
+        .meta {
+            margin-top: 0.25rem;
+            color: #555;
+        }
+        a {
+            text-decoration: none;
+            margin-left: 1rem;
+        }
+    </style>
+</head>
+<body>
+<div class="header">
+    <div>
+        <h1>Escalated Complaints – {{ department }}</h1>
+        <div class="meta">Logged in as: {{ username }}</div>
+    </div>
+    <div>
+        <a href="/admin/complaints">All complaints</a>
+        <a href="/admin/logout">Logout</a>
+    </div>
+</div>
+
+{% if complaints %}
+    <table>
+        <thead>
+        <tr>
+            <th>Ticket ID</th>
+            <th>Subject</th>
+            <th>Description</th>
+            <th>Location</th>
+            <th>Status</th>
+            <th>Created At</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for c in complaints %}
+            <tr>
+                <td>{{ c.ticket_id }}</td>
+                <td>{{ c.subject }}</td>
+                <td>{{ c.description }}</td>
+                <td>{{ c.location }}</td>
+                <td>{{ c.status }}</td>
+                <td>{{ c.created_at }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p>No complaints have been escalated for this department yet.</p>
+{% endif %}
+
+</body>
+</html>
+
