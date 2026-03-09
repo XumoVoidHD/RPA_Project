@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>SmartGov – Track Complaint</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        form { max-width: 400px; }
+        label { display: block; margin-top: 1rem; }
+        input[type="text"] {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 0.5rem;
+        }
+        button { margin-top: 1rem; padding: 0.5rem 1rem; }
+        .details { margin-top: 2rem; max-width: 560px; }
+        .details table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        .details th, .details td {
+            border: 1px solid #ccc;
+            padding: 0.5rem;
+            text-align: left;
+        }
+        .details th { background-color: #f0f0f0; width: 140px; }
+        .not-found { color: #a00; margin-top: 1rem; }
+        .nav { margin-bottom: 1.5rem; }
+        .nav a { margin-right: 1rem; }
+    </style>
+</head>
+<body>
+<div class="nav">
+    <a href="/">Submit complaint</a>
+    <a href="/track">Track by ticket ID</a>
+</div>
+
+<h1>Track your complaint</h1>
+<p>Enter your ticket ID (e.g. CMP0001) to view your report details.</p>
+
+<form method="get" action="/track">
+    <label for="ticket_id">Ticket ID</label>
+    <input type="text" id="ticket_id" name="ticket_id" value="{{ ticket_id }}" placeholder="CMP0001" required />
+    <button type="submit">Check status</button>
+</form>
+
+{% if ticket_id and not complaint %}
+    <div class="not-found">No report found for ticket ID "{{ ticket_id }}". Please check the ID and try again.</div>
+{% endif %}
+
+{% if complaint %}
+    <div class="details">
+        <h2>Report details</h2>
+        <table>
+            <tr><th>Ticket ID</th><td>{{ complaint.ticket_id }}</td></tr>
+            <tr><th>Subject</th><td>{{ complaint.subject }}</td></tr>
+            <tr><th>Description</th><td>{{ complaint.description }}</td></tr>
+            <tr><th>Location</th><td>{{ complaint.location }}</td></tr>
+            <tr><th>Department</th><td>{{ complaint.department or '—' }}</td></tr>
+            <tr><th>Status</th><td>{{ complaint.status }}</td></tr>
+            {% if complaint.cancel_reason %}
+            <tr><th>Cancellation reason</th><td>{{ complaint.cancel_reason }}</td></tr>
+            {% endif %}
+            <tr><th>Submitted on</th><td>{{ complaint.created_at.strftime('%Y-%m-%d %H:%M') if complaint.created_at else '—' }}</td></tr>
+        </table>
+    </div>
+{% endif %}
+
+</body>
+</html>

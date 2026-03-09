@@ -183,6 +183,29 @@ async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+@app.get("/track", response_class=HTMLResponse)
+async def track_complaint(
+    request: Request,
+    ticket_id: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Page for citizens to enter a ticket ID and view their complaint details.
+    GET /track shows the form; GET /track?ticket_id=CMP0001 shows the result.
+    """
+    complaint = None
+    if ticket_id and ticket_id.strip():
+        complaint = (
+            db.query(Complaint)
+            .filter(Complaint.ticket_id == ticket_id.strip().upper())
+            .first()
+        )
+    return templates.TemplateResponse(
+        "track.html",
+        {"request": request, "ticket_id": ticket_id or "", "complaint": complaint},
+    )
+
+
 @app.get("/admin/login", response_class=HTMLResponse)
 async def admin_login_form(request: Request):
     """
@@ -394,7 +417,7 @@ def process_complaint(id: int, db: Session = Depends(get_db)):
                 "Dear citizen,\n\n"
                 "We have reviewed your complaint, but it does not match any "
                 "specific department in the current system and therefore "
-                "cannot be processed.\n\n"
+                "cannot be processed. No ticket ID has been assigned.\n\n"
                 "Reason: Doesn't belong to the department.\n\n"
                 "Thank you for your understanding."
             ),
