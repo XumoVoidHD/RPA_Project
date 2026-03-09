@@ -72,6 +72,13 @@ def _load_admin_users() -> dict:
 ADMIN_USERS = _load_admin_users()
 ADMIN_SESSIONS: dict = {}
 
+# Fixed set of reasons an admin can select when cancelling a complaint.
+CANCEL_REASONS = [
+    "Doesn't belong to the department",
+    "Unable to accept image",
+    "Rejected by the authorities",
+]
+
 
 def _ensure_additional_columns() -> None:
     """
@@ -85,6 +92,7 @@ def _ensure_additional_columns() -> None:
         "ALTER TABLE complaints ADD COLUMN ticket_id VARCHAR(50)",
         "ALTER TABLE complaints ADD COLUMN department VARCHAR(100)",
         "ALTER TABLE complaints ADD COLUMN rpa_processed BOOLEAN NOT NULL DEFAULT 0",
+        "ALTER TABLE complaints ADD COLUMN cancel_reason VARCHAR(255)",
     ]
 
     with engine.begin() as conn:
@@ -325,6 +333,7 @@ def list_complaints(db: Session = Depends(get_db)):
                 "ticket_id": c.ticket_id,
                 "department": c.department,
                 "status": c.status,
+                "cancel_reason": c.cancel_reason,
                 "rpa_processed": c.rpa_processed,
                 "created_at": c.created_at.isoformat() if c.created_at else None,
             }
@@ -360,6 +369,44 @@ async def admin_complaints(request: Request, db: Session = Depends(get_db)):
             "username": session["username"],
             "department": department,
             "complaints": complaints,
+            "cancel_reasons": CANCEL_REASONS,
         },
     )
+
+
+@app.post("/admin/complaints/{complaint_id}/cancel")
+async def cancel_complaint(
+    complaint_id: int,
+    request: Request,
+    reason: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Allow an admin to cancel a complaint with a fixed reason.
+
+    The complaint's status is set to CANCELLED and the reason is stored
+    in the cancel_reason field.
+    """
+    session = _get_admin_session(request)
+    if session is None:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    complaint = db.get(Complaint, complaint_id)
+    if complaint is None:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+
+    # Ensure the complaint belongs to the admin's department before allowing cancellation.
+    if complaint.department != session["department"]:
+        raise HTTPException(status_code=403, detail="Cannot cancel complaints in another department")
+
+    if reason not in CANCEL_REASONS:
+        raise HTTPException(status_code=400, detail="Invalid cancellation reason")
+
+    complaint.status = ComplaintStatus.CANCELLED.value
+    complaint.cancel_reason = reason
+
+    db.commit()
+    db.refresh(complaint)
+
+    return RedirectResponse(url="/admin/complaints", status_code=303)
 

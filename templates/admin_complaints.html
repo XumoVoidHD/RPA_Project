@@ -36,6 +36,18 @@
         a {
             text-decoration: none;
         }
+        .cancel-form {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        select {
+            padding: 0.25rem;
+        }
+        .cancel-info {
+            font-size: 0.85rem;
+            color: #a00;
+        }
     </style>
 </head>
 <body>
@@ -61,6 +73,7 @@
             <th>Status</th>
             <th>RPA Processed</th>
             <th>Created At</th>
+            <th>Actions</th>
         </tr>
         </thead>
         <tbody>
@@ -71,9 +84,28 @@
                 <td>{{ c.description }}</td>
                 <td>{{ c.location }}</td>
                 <td>{{ c.ticket_id or "-" }}</td>
-                <td>{{ c.status }}</td>
+                <td>
+                    {{ c.status }}
+                    {% if c.status == "CANCELLED" and c.cancel_reason %}
+                        <div class="cancel-info">Reason: {{ c.cancel_reason }}</div>
+                    {% endif %}
+                </td>
                 <td>{{ "Yes" if c.rpa_processed else "No" }}</td>
                 <td>{{ c.created_at }}</td>
+                <td>
+                    {% if c.status != "CANCELLED" %}
+                        <form method="post" action="/admin/complaints/{{ c.id }}/cancel" class="cancel-form">
+                            <select name="reason" required>
+                                {% for r in cancel_reasons %}
+                                    <option value="{{ r }}">{{ r }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit">Cancel</button>
+                        </form>
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
             </tr>
         {% endfor %}
         </tbody>

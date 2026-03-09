@@ -17,6 +17,7 @@ class ComplaintStatus(str, Enum):
     IN_PROGRESS = "IN_PROGRESS"
     RESOLVED = "RESOLVED"
     CLOSED = "CLOSED"
+    CANCELLED = "CANCELLED"
 
 
 class Complaint(Base):
@@ -41,5 +42,6 @@ class Complaint(Base):
     rpa_processed = Column(Boolean, nullable=False, default=False)
 
     status = Column(String(50), nullable=False, default=ComplaintStatus.PENDING.value)
+    cancel_reason = Column(String(255), nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
