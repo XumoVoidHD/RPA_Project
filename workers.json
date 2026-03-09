@@ -1,0 +1,12 @@
+{
+  "publicworks1": { "password": "pw1", "department": "Public Works" },
+  "publicworks2": { "password": "pw2", "department": "Public Works" },
+  "sanitation1": { "password": "s1", "department": "Sanitation" },
+  "sanitation2": { "password": "s2", "department": "Sanitation" },
+  "water1": { "password": "w1", "department": "Water Department" },
+  "water2": { "password": "w2", "department": "Water Department" },
+  "electricity1": { "password": "e1", "department": "Electricity" },
+  "electricity2": { "password": "e2", "department": "Electricity" },
+  "general1": { "password": "g1", "department": "General Department" },
+  "general2": { "password": "g2", "department": "General Department" }
+}

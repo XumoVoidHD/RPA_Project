@@ -45,5 +45,11 @@ class Complaint(Base):
 
     status = Column(String(50), nullable=False, default=ComplaintStatus.PENDING.value)
     cancel_reason = Column(String(255), nullable=True)
+
+    # Worker assignment and proof of work
+    assigned_to = Column(String(100), nullable=True)  # worker username
+    proof_image_path = Column(String(255), nullable=True)
+    proof_description = Column(Text, nullable=True)
+
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 

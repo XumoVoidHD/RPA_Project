@@ -63,6 +63,17 @@
             {% endif %}
             <tr><th>Submitted on</th><td>{{ complaint.created_at.strftime('%Y-%m-%d %H:%M') if complaint.created_at else '—' }}</td></tr>
         </table>
+        {% if complaint.proof_description or complaint.proof_image_path %}
+        <h3 style="margin-top: 1.5rem;">Resolution (work completed)</h3>
+        {% if complaint.proof_description %}
+        <p><strong>Comment from worker:</strong></p>
+        <p style="white-space: pre-wrap; background: #f5f5f5; padding: 0.75rem; border-radius: 4px;">{{ complaint.proof_description }}</p>
+        {% endif %}
+        {% if complaint.proof_image_path %}
+        <p><strong>Proof of work:</strong></p>
+        <img src="/{{ complaint.proof_image_path }}" alt="Proof of work" style="max-width: 100%; max-height: 400px; border: 1px solid #ccc; border-radius: 4px;" />
+        {% endif %}
+        {% endif %}
     </div>
 {% endif %}
 

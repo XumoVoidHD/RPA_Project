@@ -5,6 +5,7 @@ from classifier import classify_department
 from database import get_db
 from helpers.complaint_utils import generate_ticket_id
 from helpers.email_utils import send_email
+from helpers.worker_utils import assign_worker
 from models import Complaint, ComplaintStatus
 
 
@@ -90,6 +91,11 @@ def process_complaint(id: int, db: Session = Depends(get_db)):
     complaint.ticket_id = ticket_id
     complaint.department = department
     complaint.rpa_processed = True
+
+    # Assign to a worker in this department (round-robin)
+    worker = assign_worker(db, department)
+    if worker:
+        complaint.assigned_to = worker
 
     db.commit()
     db.refresh(complaint)

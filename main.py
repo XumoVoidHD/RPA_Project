@@ -32,10 +32,11 @@ from uuid import uuid4
 from dotenv import load_dotenv
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from database import Base, engine
-from routers import admin, public, rpa
+from routers import admin, public, rpa, worker
 
 
 # Base directory of this project file (same folder as .env)
@@ -61,6 +62,9 @@ def _ensure_additional_columns() -> None:
         "ALTER TABLE complaints ADD COLUMN rpa_processed BOOLEAN NOT NULL DEFAULT 0",
         "ALTER TABLE complaints ADD COLUMN cancel_reason VARCHAR(255)",
         "ALTER TABLE complaints ADD COLUMN email VARCHAR(255) NOT NULL DEFAULT ''",
+        "ALTER TABLE complaints ADD COLUMN assigned_to VARCHAR(100)",
+        "ALTER TABLE complaints ADD COLUMN proof_image_path VARCHAR(255)",
+        "ALTER TABLE complaints ADD COLUMN proof_description TEXT",
     ]
 
     with engine.begin() as conn:
@@ -84,8 +88,12 @@ def on_startup() -> None:
     _ensure_additional_columns()
 
 
+# Serve uploaded complaint images and worker proof images
+app.mount("/uploads", StaticFiles(directory=BASE_DIR / "uploads"), name="uploads")
+
 # Include routers grouped by area
 app.include_router(public.router)
 app.include_router(rpa.router)
 app.include_router(admin.router)
+app.include_router(worker.router)
 

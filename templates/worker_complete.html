@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>SmartGov – Complete Task</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 2rem;
+        }
+        .complaint-info {
+            background: #f5f5f5;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            border-radius: 4px;
+        }
+        label { display: block; margin-top: 1rem; }
+        input[type="file"], textarea {
+            margin-top: 0.25rem;
+        }
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            box-sizing: border-box;
+            padding: 0.5rem;
+        }
+        button { margin-top: 1rem; padding: 0.5rem 1rem; }
+        a { text-decoration: none; margin-right: 1rem; }
+    </style>
+</head>
+<body>
+<h1>Complete Task</h1>
+
+<div class="complaint-info">
+    <p><strong>Ticket:</strong> {{ complaint.ticket_id or '—' }}</p>
+    <p><strong>Subject:</strong> {{ complaint.subject }}</p>
+    <p><strong>Description:</strong> {{ complaint.description }}</p>
+    <p><strong>Location:</strong> {{ complaint.location }}</p>
+</div>
+
+<form method="post" action="/worker/complete/{{ complaint.id }}" enctype="multipart/form-data">
+    <label for="image">Proof of work (image)</label>
+    <input type="file" id="image" name="image" accept="image/*" />
+
+    <label for="description">Completion description</label>
+    <textarea id="description" name="description" required placeholder="Describe what was done..."></textarea>
+
+    <div>
+        <button type="submit">Submit & Resolve Complaint</button>
+        <a href="/worker/tasks">Cancel</a>
+    </div>
+</form>
+
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>SmartGov – My Tasks</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 2rem;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 1rem;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 0.5rem;
+            text-align: left;
+        }
+        th {
+            background-color: #f0f0f0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { margin: 0; }
+        .meta { margin-top: 0.25rem; color: #555; }
+        a { text-decoration: none; }
+        .empty { margin-top: 1rem; color: #666; }
+    </style>
+</head>
+<body>
+<div class="header">
+    <div>
+        <h1>My Tasks</h1>
+        <div class="meta">{{ department }} – Logged in as: {{ username }}</div>
+    </div>
+    <div>
+        <a href="/worker/logout">Logout</a>
+    </div>
+</div>
+
+{% if tasks %}
+    <table>
+        <thead>
+        <tr>
+            <th>ID</th>
+            <th>Subject</th>
+            <th>Description</th>
+            <th>Location</th>
+            <th>Ticket ID</th>
+            <th>Status</th>
+            <th>Created At</th>
+            <th>Action</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for t in tasks %}
+        <tr>
+            <td>{{ t.id }}</td>
+            <td>{{ t.subject }}</td>
+            <td>{{ t.description[:80] }}{% if t.description|length > 80 %}...{% endif %}</td>
+            <td>{{ t.location }}</td>
+            <td>{{ t.ticket_id or '—' }}</td>
+            <td>{{ t.status }}</td>
+            <td>{{ t.created_at.strftime('%Y-%m-%d %H:%M') if t.created_at else '—' }}</td>
+            <td><a href="/worker/complete/{{ t.id }}">Complete</a></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p class="empty">No tasks assigned to you at the moment.</p>
+{% endif %}
+
+</body>
+</html>

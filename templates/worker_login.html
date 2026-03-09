@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>SmartGov – Worker Login</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 2rem;
+        }
+        form {
+            max-width: 320px;
+        }
+        label {
+            display: block;
+            margin-top: 1rem;
+        }
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 0.5rem;
+        }
+        button {
+            margin-top: 1.5rem;
+            padding: 0.5rem 1rem;
+        }
+        .error {
+            color: red;
+            margin-top: 1rem;
+        }
+        .hint {
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+            color: #555;
+        }
+        code {
+            background-color: #f0f0f0;
+            padding: 0 0.25rem;
+        }
+    </style>
+</head>
+<body>
+<h1>Worker Login</h1>
+
+<form method="post" action="/worker/login">
+    <label for="username">Username</label>
+    <input type="text" id="username" name="username" required />
+
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" required />
+
+    <button type="submit">Login</button>
+</form>
+
+{% if error %}
+    <div class="error">{{ error }}</div>
+{% endif %}
+
+<div class="hint">
+    <p>Demo worker accounts (2 per department):</p>
+    <ul>
+        <li>Public Works: <code>publicworks1 / pw1</code>, <code>publicworks2 / pw2</code></li>
+        <li>Sanitation: <code>sanitation1 / s1</code>, <code>sanitation2 / s2</code></li>
+        <li>Water: <code>water1 / w1</code>, <code>water2 / w2</code></li>
+        <li>Electricity: <code>electricity1 / e1</code>, <code>electricity2 / e2</code></li>
+        <li>General: <code>general1 / g1</code>, <code>general2 / g2</code></li>
+    </ul>
+</div>
+
+</body>
+</html>
