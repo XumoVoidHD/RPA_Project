@@ -23,22 +23,30 @@ It exposes:
 import json
 import os
 import shutil
+import ssl
+from email.message import EmailMessage
 from pathlib import Path
 from uuid import uuid4
+
+from dotenv import load_dotenv
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+import smtplib
 
 from classifier import classify_department
 from database import Base, engine, get_db
 from models import Complaint, ComplaintStatus
 
 
-# Base directory of this project file
+# Base directory of this project file (same folder as .env)
 BASE_DIR = Path(__file__).resolve().parent
+
+# Load .env from same directory as main.py so SMTP_* and FROM_EMAIL are available
+load_dotenv(BASE_DIR / ".env")
 
 # Directory where uploaded images will be stored
 UPLOAD_DIR = BASE_DIR / "uploads"
@@ -80,6 +88,56 @@ CANCEL_REASONS = [
 ]
 
 
+def _send_email(to_email: str, subject: str, body: str) -> None:
+    """
+    Very simple email sender using SMTP.
+
+    Configuration is taken from environment variables:
+      - SMTP_HOST
+      - SMTP_PORT
+      - SMTP_USER (optional)
+      - SMTP_PASSWORD (optional)
+      - SMTP_USE_TLS (\"1\" to enable)
+      - FROM_EMAIL (sender address)
+
+    If configuration is missing or sending fails, the error is printed
+    and the application continues without failing the request.
+    """
+    to_email = (to_email or "").strip()
+    if not to_email:
+        return
+
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_port = int(os.getenv("SMTP_PORT", "25"))
+    from_email = os.getenv("FROM_EMAIL")
+    use_tls = os.getenv("SMTP_USE_TLS", "0") == "1"
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    if not smtp_host or not from_email:
+        # Email not configured; skip sending.
+        print("Email not configured; skipping email to", to_email)
+        return
+
+    msg = EmailMessage()
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.set_content(body)
+
+    try:
+        # Use longer timeout and explicit SSL context for Gmail STARTTLS (avoids handshake timeout)
+        context = ssl.create_default_context()
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
+            if use_tls:
+                server.starttls(context=context)
+            if smtp_user and smtp_password:
+                server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+    except Exception as exc:
+        # For this prototype just log the error instead of failing the request.
+        print("Failed to send email to", to_email, "error:", exc)
+
+
 def _ensure_additional_columns() -> None:
     """
     Very small, manual migration step for SQLite.
@@ -93,6 +151,7 @@ def _ensure_additional_columns() -> None:
         "ALTER TABLE complaints ADD COLUMN department VARCHAR(100)",
         "ALTER TABLE complaints ADD COLUMN rpa_processed BOOLEAN NOT NULL DEFAULT 0",
         "ALTER TABLE complaints ADD COLUMN cancel_reason VARCHAR(255)",
+        "ALTER TABLE complaints ADD COLUMN email VARCHAR(255) NOT NULL DEFAULT ''",
     ]
 
     with engine.begin() as conn:
@@ -188,6 +247,7 @@ async def submit_complaint(
     subject: str = Form(...),
     description: str = Form(...),
     location: str = Form(...),
+    email: str = Form(...),
     image: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ):
@@ -221,6 +281,7 @@ async def submit_complaint(
         subject=subject,
         description=description,
         location=location,
+        email=email,
         image_path=image_path_value,
     )
 
@@ -228,6 +289,19 @@ async def submit_complaint(
     db.add(complaint)
     db.commit()
     db.refresh(complaint)
+
+    # Send an acknowledgement email to the citizen.
+    _send_email(
+        to_email=complaint.email,
+        subject="Your complaint has been received",
+        body=(
+            "Dear citizen,\n\n"
+            "Your complaint has been received by the SmartGov system.\n"
+            "You will receive another email once your complaint is accepted "
+            "for processing and a ticket ID has been generated.\n\n"
+            "Thank you."
+        ),
+    )
 
     # Response is intentionally minimal JSON as requested
     return {"message": "Complaint submitted successfully"}
@@ -303,12 +377,54 @@ def process_complaint(id: int, db: Session = Depends(get_db)):
     ticket_id = _generate_ticket_id(db)
     department = classify_department(complaint.subject)
 
+    # If the classifier cannot confidently map to a concrete department,
+    # treat the complaint as rejected instead of accepted.
+    if department == "General Department":
+        complaint.status = ComplaintStatus.CANCELLED.value
+        complaint.cancel_reason = "Doesn't belong to the department"
+        complaint.rpa_processed = True
+
+        db.commit()
+        db.refresh(complaint)
+
+        _send_email(
+            to_email=complaint.email,
+            subject="Your complaint could not be accepted",
+            body=(
+                "Dear citizen,\n\n"
+                "We have reviewed your complaint, but it does not match any "
+                "specific department in the current system and therefore "
+                "cannot be processed.\n\n"
+                "Reason: Doesn't belong to the department.\n\n"
+                "Thank you for your understanding."
+            ),
+        )
+
+        return {
+            "status": "REJECTED",
+            "reason": "Complaint does not belong to any known department",
+        }
+
     complaint.ticket_id = ticket_id
     complaint.department = department
     complaint.rpa_processed = True
 
     db.commit()
     db.refresh(complaint)
+
+    # Notify citizen that the complaint has been accepted and a ticket created.
+    _send_email(
+        to_email=complaint.email,
+        subject="Your complaint has been accepted",
+        body=(
+            "Dear citizen,\n\n"
+            "Your complaint has been accepted for processing.\n"
+            f"Ticket ID: {complaint.ticket_id}\n"
+            f"Department: {complaint.department}\n\n"
+            "Our team will work to resolve this issue as soon as possible.\n\n"
+            "Thank you."
+        ),
+    )
 
     return {"ticket_id": ticket_id, "department": department}
 

@@ -34,6 +34,7 @@ class Complaint(Base):
     subject = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
     location = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False)
     image_path = Column(String(255), nullable=True)
 
     # RPA-related fields
