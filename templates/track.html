@@ -86,9 +86,9 @@
         <div class="verify-actions">
             <p><strong>Please verify the resolution:</strong></p>
             <p>
-                <a href="/track/verify?ticket_id={{ complaint.ticket_id }}&action=confirm">Yes — I confirm the issue is resolved</a>
+                <a href="#" class="verify-action-button" data-action="confirm" data-ticket-id="{{ complaint.ticket_id }}">Yes — I confirm the issue is resolved</a>
                 <br />
-                <a href="/track/verify?ticket_id={{ complaint.ticket_id }}&action=reject">No — the issue is still not resolved</a>
+                <a href="#" class="verify-action-button" data-action="reject" data-ticket-id="{{ complaint.ticket_id }}">No — the issue is still not resolved</a>
             </p>
         </div>
         {% elif complaint.status == 'ESCALATED' %}
@@ -103,6 +103,41 @@
         {% endif %}
     </div>
 {% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.verify-action-button').forEach(function(button) {
+        button.addEventListener('click', async function(event) {
+            event.preventDefault();
+            const ticketId = button.dataset.ticketId;
+            const action = button.dataset.action;
+            const endpoint = `/track/send-pin?ticket_id=${encodeURIComponent(ticketId)}&action=${encodeURIComponent(action)}`;
+
+            try {
+                const response = await fetch(endpoint);
+                const result = await response.json();
+                if (!response.ok) {
+                    alert(result.detail || result.message || 'Unable to send verification PIN.');
+                    return;
+                }
+
+                const pin = prompt('A 4-digit PIN has been sent to your registered email. Please enter it here:');
+                if (!pin) {
+                    return;
+                }
+                if (!/^[0-9]{4}$/.test(pin.trim())) {
+                    alert('Please enter a valid 4-digit PIN.');
+                    return;
+                }
+
+                window.location.href = `/track/verify?ticket_id=${encodeURIComponent(ticketId)}&action=${encodeURIComponent(action)}&pin=${encodeURIComponent(pin.trim())}`;
+            } catch (error) {
+                alert('Unable to send verification PIN. Please try again later.');
+            }
+        });
+    });
+});
+</script>
 
 </body>
 </html>

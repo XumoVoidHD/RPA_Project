@@ -1,10 +1,12 @@
 import os
+import random
 import shutil
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -59,15 +61,64 @@ async def track_complaint(
     )
 
 
-@router.get("/track/verify", response_class=HTMLResponse)
-async def verify_complaint(
+@router.get("/track/send-pin")
+async def send_verification_pin(
     request: Request,
     ticket_id: str | None = None,
     action: str | None = None,
     db: Session = Depends(get_db),
 ):
     """
-    Handle verification actions from the email link.
+    Send a one-time 4-digit PIN to the citizen's email for verification.
+    """
+    if not ticket_id or not ticket_id.strip():
+        return JSONResponse({"detail": "Ticket ID is required."}, status_code=400)
+
+    if action not in {"confirm", "reject"}:
+        return JSONResponse({"detail": "Invalid verification action."}, status_code=400)
+
+    complaint = (
+        db.query(Complaint)
+        .filter(Complaint.ticket_id == ticket_id.strip().upper())
+        .first()
+    )
+
+    if complaint is None:
+        return JSONResponse({"detail": "Complaint not found."}, status_code=404)
+
+    if complaint.status != ComplaintStatus.RESOLVED.value:
+        return JSONResponse({"detail": "Verification can only be requested for resolved complaints."}, status_code=400)
+
+    pin = f"{random.randint(1000, 9999):04d}"
+    complaint.verification_pin = pin
+    complaint.verification_pin_sent_at = datetime.utcnow()
+    db.commit()
+    db.refresh(complaint)
+
+    send_email(
+        to_email=complaint.email,
+        subject="Your SmartGov verification PIN",
+        body=(
+            "Dear citizen,\n\n"
+            f"A 4-digit verification PIN has been requested for Ticket ID: {complaint.ticket_id}.\n"
+            f"Please use this PIN to verify your response: {pin}\n\n"
+            "If you did not request this, please ignore this message.\n"
+        ),
+    )
+
+    return JSONResponse({"message": "PIN sent to your registered email address."})
+
+
+@router.get("/track/verify", response_class=HTMLResponse)
+async def verify_complaint(
+    request: Request,
+    ticket_id: str | None = None,
+    action: str | None = None,
+    pin: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Handle verification actions after the citizen enters their 4-digit PIN.
 
     If the user confirms the resolution, the complaint is closed.
     If the user reports the issue as still not resolved, the complaint is escalated.
@@ -94,13 +145,22 @@ async def verify_complaint(
             },
         )
 
-    if action == "confirm":
+    if action not in {"confirm", "reject"}:
+        result_message = "Invalid verification action."
+    elif complaint.status != ComplaintStatus.RESOLVED.value:
         if complaint.status == ComplaintStatus.CLOSED.value:
             result_message = "This complaint has already been confirmed as resolved."
-        elif complaint.status == ComplaintStatus.RESOLVED.value:
+        elif complaint.status == ComplaintStatus.ESCALATED.value:
+            result_message = "This complaint has already been escalated to higher command."
+        else:
+            result_message = "This complaint cannot be verified in its current status."
+    elif not pin or not pin.strip():
+        result_message = "A 4-digit PIN is required to verify this complaint."
+    elif complaint.verification_pin != pin.strip():
+        result_message = "The PIN you entered is incorrect. Please request a new PIN and try again."
+    else:
+        if action == "confirm":
             complaint.status = ComplaintStatus.CLOSED.value
-            db.commit()
-            db.refresh(complaint)
             result_message = "Thank you. Your complaint has been confirmed as resolved and is now closed."
             send_email(
                 to_email=complaint.email,
@@ -112,15 +172,8 @@ async def verify_complaint(
                     "Thank you for verifying the resolution.\n"
                 ),
             )
-        else:
-            result_message = "This complaint cannot be confirmed in its current status."
-    elif action == "reject":
-        if complaint.status == ComplaintStatus.ESCALATED.value:
-            result_message = "This complaint has already been escalated to higher command."
-        elif complaint.status == ComplaintStatus.RESOLVED.value:
+        elif action == "reject":
             complaint.status = ComplaintStatus.ESCALATED.value
-            db.commit()
-            db.refresh(complaint)
             result_message = (
                 "Your complaint has been re-opened and escalated to higher command. "
                 "A department officer will review it again."
@@ -135,10 +188,10 @@ async def verify_complaint(
                     "Thank you for your feedback.\n"
                 ),
             )
-        else:
-            result_message = "This complaint cannot be escalated in its current status."
-    else:
-        result_message = "Invalid verification action. Please use the link provided in your email."
+        complaint.verification_pin = None
+        complaint.verification_pin_sent_at = None
+        db.commit()
+        db.refresh(complaint)
 
     return templates.TemplateResponse(
         "track.html",

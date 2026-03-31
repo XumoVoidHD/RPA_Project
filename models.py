@@ -51,5 +51,9 @@ class Complaint(Base):
     proof_image_path = Column(String(255), nullable=True)
     proof_description = Column(Text, nullable=True)
 
+    # Citizen verification PIN for resolved complaints
+    verification_pin = Column(String(10), nullable=True)
+    verification_pin_sent_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 

@@ -20,6 +20,8 @@ def ensure_complaints_table_columns(engine: Engine) -> None:
         "ALTER TABLE complaints ADD COLUMN assigned_to VARCHAR(100)",
         "ALTER TABLE complaints ADD COLUMN proof_image_path VARCHAR(255)",
         "ALTER TABLE complaints ADD COLUMN proof_description TEXT",
+        "ALTER TABLE complaints ADD COLUMN verification_pin VARCHAR(10)",
+        "ALTER TABLE complaints ADD COLUMN verification_pin_sent_at DATETIME",
     ]
 
     with engine.begin() as conn:
