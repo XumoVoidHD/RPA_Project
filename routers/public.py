@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from helpers.email_utils import send_email
-from models import Complaint
+from models import Complaint, ComplaintStatus
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -50,7 +50,104 @@ async def track_complaint(
         )
     return templates.TemplateResponse(
         "track.html",
-        {"request": request, "ticket_id": ticket_id or "", "complaint": complaint},
+        {
+            "request": request,
+            "ticket_id": ticket_id or "",
+            "complaint": complaint,
+            "result_message": None,
+        },
+    )
+
+
+@router.get("/track/verify", response_class=HTMLResponse)
+async def verify_complaint(
+    request: Request,
+    ticket_id: str | None = None,
+    action: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Handle verification actions from the email link.
+
+    If the user confirms the resolution, the complaint is closed.
+    If the user reports the issue as still not resolved, the complaint is escalated.
+    """
+    result_message = None
+    complaint = None
+
+    if ticket_id and ticket_id.strip():
+        complaint = (
+            db.query(Complaint)
+            .filter(Complaint.ticket_id == ticket_id.strip().upper())
+            .first()
+        )
+
+    if complaint is None:
+        result_message = "No complaint found for the provided ticket ID."
+        return templates.TemplateResponse(
+            "track.html",
+            {
+                "request": request,
+                "ticket_id": ticket_id or "",
+                "complaint": None,
+                "result_message": result_message,
+            },
+        )
+
+    if action == "confirm":
+        if complaint.status == ComplaintStatus.CLOSED.value:
+            result_message = "This complaint has already been confirmed as resolved."
+        elif complaint.status == ComplaintStatus.RESOLVED.value:
+            complaint.status = ComplaintStatus.CLOSED.value
+            db.commit()
+            db.refresh(complaint)
+            result_message = "Thank you. Your complaint has been confirmed as resolved and is now closed."
+            send_email(
+                to_email=complaint.email,
+                subject="Complaint verified and closed",
+                body=(
+                    "Dear citizen,\n\n"
+                    f"We have received your confirmation for Ticket ID: {complaint.ticket_id}.\n"
+                    "Your complaint is now marked as closed.\n\n"
+                    "Thank you for verifying the resolution.\n"
+                ),
+            )
+        else:
+            result_message = "This complaint cannot be confirmed in its current status."
+    elif action == "reject":
+        if complaint.status == ComplaintStatus.ESCALATED.value:
+            result_message = "This complaint has already been escalated to higher command."
+        elif complaint.status == ComplaintStatus.RESOLVED.value:
+            complaint.status = ComplaintStatus.ESCALATED.value
+            db.commit()
+            db.refresh(complaint)
+            result_message = (
+                "Your complaint has been re-opened and escalated to higher command. "
+                "A department officer will review it again."
+            )
+            send_email(
+                to_email=complaint.email,
+                subject="Complaint re-opened and escalated",
+                body=(
+                    "Dear citizen,\n\n"
+                    f"Your complaint (Ticket ID: {complaint.ticket_id}) has been re-opened and escalated to higher command.\n\n"
+                    "We will review the issue again and keep you updated.\n\n"
+                    "Thank you for your feedback.\n"
+                ),
+            )
+        else:
+            result_message = "This complaint cannot be escalated in its current status."
+    else:
+        result_message = "Invalid verification action. Please use the link provided in your email."
+
+    return templates.TemplateResponse(
+        "track.html",
+        {
+            "request": request,
+            "ticket_id": ticket_id or "",
+            "complaint": complaint,
+            "result_message": result_message,
+        },
     )
 
 

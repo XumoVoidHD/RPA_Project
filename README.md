@@ -175,7 +175,8 @@ Startup migration in `migrations.py` adds missing columns (e.g. `ticket_id`, `de
 - On **POST /worker/complete/{complaint_id}**:
   - The proof image is saved under `uploads/proofs/` with a unique filename; `proof_image_path` and `proof_description` are stored on the complaint.
   - Complaint **status** is set to **RESOLVED**.
-  - An **email is sent to the citizen** (the complaint’s `email` field) informing them that their complaint has been resolved.
+  - An **email is sent to the citizen** with a verification link.
+  - If the citizen confirms, the complaint becomes **CLOSED**; if they report it as still not resolved, it is re-opened and set to **ESCALATED**.
 
 ### 6. Department admin views and cancels
 

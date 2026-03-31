@@ -144,7 +144,7 @@ async def worker_complete_submit(
     db: Session = Depends(get_db),
 ):
     """
-    Save proof image and description, set status to RESOLVED, send email to citizen.
+    Save proof image and description, set status to RESOLVED, and send a verification email to the citizen.
     """
     session = get_worker_session(request)
     if session is None:
@@ -174,16 +174,21 @@ async def worker_complete_submit(
     db.commit()
     db.refresh(complaint)
 
-    # Notify citizen that their complaint has been closed
+    verification_base = str(request.base_url).rstrip("/")
+    confirm_url = f"{verification_base}/track/verify?ticket_id={complaint.ticket_id}&action=confirm"
+    reject_url = f"{verification_base}/track/verify?ticket_id={complaint.ticket_id}&action=reject"
+
     send_email(
         to_email=complaint.email,
-        subject="Your complaint has been resolved",
+        subject="Your complaint has been resolved — please verify",
         body=(
             "Dear citizen,\n\n"
-            f"Your complaint (Ticket ID: {complaint.ticket_id}) has been resolved.\n\n"
-            "Our team has completed the work. Thank you for using SmartGov.\n\n"
-            "If you have any further concerns, please submit a new complaint.\n\n"
-            "Thank you."
+            f"Your complaint (Ticket ID: {complaint.ticket_id}) has been resolved by the assigned team.\n\n"
+            "Please verify that the issue has been addressed: \n"
+            f"Confirm resolution: {confirm_url}\n"
+            f"If the problem is still not resolved, report it here: {reject_url}\n\n"
+            "If you do not take any action, the complaint will remain marked as resolved.\n\n"
+            "Thank you for using SmartGov.\n"
         ),
     )
 
