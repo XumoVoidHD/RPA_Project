@@ -18,8 +18,9 @@ A minimal local complaint registration system for citizens, with RPA-style proce
 
 ```
 rpaProject/
-├── main.py              # FastAPI app, routes, email sending
+├── main.py              # FastAPI app, startup, static mounts, routers
 ├── database.py          # SQLite engine, session, get_db
+├── migrations.py        # SQLite ALTER TABLE for older complaint DBs
 ├── models.py            # Complaint model, ComplaintStatus enum
 ├── classifier.py        # Keyword-based department classifier
 ├── admin_users.json     # Admin credentials (username → password, department)
@@ -126,7 +127,7 @@ uvicorn main:app --reload
 | proof_description | text  | Worker’s completion notes |
 | created_at      | datetime | Auto-set on insert |
 
-Startup migration in `main.py` adds missing columns (e.g. `ticket_id`, `department`, `rpa_processed`, `cancel_reason`, `email`, `assigned_to`, `proof_image_path`, `proof_description`) if the table already existed from an older version.
+Startup migration in `migrations.py` adds missing columns (e.g. `ticket_id`, `department`, `rpa_processed`, `cancel_reason`, `email`, `assigned_to`, `proof_image_path`, `proof_description`) if the table already existed from an older version.
 
 ---
 
