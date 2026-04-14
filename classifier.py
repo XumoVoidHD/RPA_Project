@@ -35,6 +35,14 @@ def classify_department(subject: str) -> str:
     # Electricity
     if "street light" in text:
         return "Electricity"
+    if "electricity" in text:
+        return "Electricity"
+    if "power" in text:
+        return "Electricity"
+    if "outage" in text:
+        return "Electricity"
+    if "no electricity" in text:
+        return "Electricity"
 
     return "General Department"
 

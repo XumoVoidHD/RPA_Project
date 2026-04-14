@@ -56,6 +56,8 @@ def assign_worker(db, department: str) -> str | None:
                 Complaint.department == department,
                 Complaint.assigned_to == u,
                 Complaint.status != "CANCELLED",
+                Complaint.status != "REJECTED",
+                Complaint.status != "CLOSED",
             )
             .count()
         )

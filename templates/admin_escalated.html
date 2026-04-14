@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <title>SmartGov – Escalated Complaints ({{ department }})</title>
+    <title>SmartGov - Escalated Complaints ({{ department }})</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -17,6 +17,7 @@
             border: 1px solid #ccc;
             padding: 0.5rem;
             text-align: left;
+            vertical-align: top;
         }
         th {
             background-color: #f0f0f0;
@@ -37,12 +38,16 @@
             text-decoration: none;
             margin-left: 1rem;
         }
+        .subtle {
+            color: #555;
+            font-size: 0.85rem;
+        }
     </style>
 </head>
 <body>
 <div class="header">
     <div>
-        <h1>Escalated Complaints – {{ department }}</h1>
+        <h1>Escalated Complaints - {{ department }}</h1>
         <div class="meta">Logged in as: {{ username }}</div>
     </div>
     <div>
@@ -60,6 +65,8 @@
             <th>Description</th>
             <th>Location</th>
             <th>Status</th>
+            <th>Latest Update</th>
+            <th>ETA</th>
             <th>Created At</th>
         </tr>
         </thead>
@@ -70,7 +77,11 @@
                 <td>{{ c.subject }}</td>
                 <td>{{ c.description }}</td>
                 <td>{{ c.location }}</td>
-                <td>{{ c.status }}</td>
+                <td>{{ format_status_label(c.status) }}</td>
+                <td>
+                    <div class="subtle">{{ c.progress_note or 'No worker update yet.' }}</div>
+                </td>
+                <td>{{ c.estimated_resolution_at.strftime('%Y-%m-%d %H:%M') if c.estimated_resolution_at else '-' }}</td>
                 <td>{{ c.created_at }}</td>
             </tr>
         {% endfor %}
@@ -82,4 +93,3 @@
 
 </body>
 </html>
-

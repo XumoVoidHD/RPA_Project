@@ -61,10 +61,17 @@ def process_complaint(id: int, db: Session = Depends(get_db)):
     department = classify_department(complaint.subject)
 
     # If the classifier cannot confidently map to a concrete department,
-    # treat the complaint as rejected instead of accepted.
+    # keep the complaint in admin review instead of auto-rejecting it.
     if department == "General Department":
-        complaint.status = ComplaintStatus.CANCELLED.value
-        complaint.cancel_reason = "Doesn't belong to the department"
+        complaint.department = department
+        complaint.rpa_processed = True
+        complaint.status = ComplaintStatus.UNDER_REVIEW.value
+        complaint.progress_note = (
+            "This complaint could not be mapped to a specific operational department and requires admin review."
+        )
+        complaint.estimated_resolution_at = None
+        complaint.assigned_to = None
+        complaint.ticket_id = ticket_id
         complaint.rpa_processed = True
 
         db.commit()
@@ -72,20 +79,21 @@ def process_complaint(id: int, db: Session = Depends(get_db)):
 
         send_email(
             to_email=complaint.email,
-            subject="Your complaint could not be accepted",
+            subject="Your complaint is under review",
             body=(
                 "Dear citizen,\n\n"
-                "We have reviewed your complaint, but it does not match any "
-                "specific department in the current system and therefore "
-                "cannot be processed. No ticket ID has been assigned.\n\n"
-                "Reason: Doesn't belong to the department.\n\n"
-                "Thank you for your understanding."
+                "Your complaint has been received and is currently under administrative review.\n"
+                f"Temporary Ticket ID: {complaint.ticket_id}\n"
+                "Our team could not automatically assign it to a specific department, "
+                "so an administrator will review it and decide the next action.\n\n"
+                "Thank you for your patience."
             ),
         )
 
         return {
-            "status": "REJECTED",
-            "reason": "Complaint does not belong to any known department",
+            "ticket_id": complaint.ticket_id,
+            "department": complaint.department,
+            "status": complaint.status,
         }
 
     complaint.ticket_id = ticket_id
@@ -96,6 +104,14 @@ def process_complaint(id: int, db: Session = Depends(get_db)):
     worker = assign_worker(db, department)
     if worker:
         complaint.assigned_to = worker
+        complaint.status = ComplaintStatus.ASSIGNED.value
+        complaint.progress_percent = 0
+        complaint.progress_note = "Complaint accepted and assigned to the department team."
+        complaint.estimated_resolution_at = None
+    else:
+        complaint.status = ComplaintStatus.ACCEPTED.value
+        complaint.progress_note = "Complaint accepted, but no worker is currently available for assignment."
+        complaint.estimated_resolution_at = None
 
     db.commit()
     db.refresh(complaint)
@@ -109,7 +125,7 @@ def process_complaint(id: int, db: Session = Depends(get_db)):
             "Your complaint has been accepted for processing.\n"
             f"Ticket ID: {complaint.ticket_id}\n"
             f"Department: {complaint.department}\n\n"
-            "Our team will work to resolve this issue as soon as possible.\n\n"
+            "The complaint has been assigned to the department team.\n\n"
             "Thank you."
         ),
     )
@@ -137,6 +153,13 @@ def list_complaints(db: Session = Depends(get_db)):
                 "ticket_id": c.ticket_id,
                 "department": c.department,
                 "status": c.status,
+                "progress_percent": c.progress_percent,
+                "progress_note": c.progress_note,
+                "estimated_resolution_at": (
+                    c.estimated_resolution_at.isoformat()
+                    if c.estimated_resolution_at
+                    else None
+                ),
                 "cancel_reason": c.cancel_reason,
                 "rpa_processed": c.rpa_processed,
                 "created_at": c.created_at.isoformat() if c.created_at else None,

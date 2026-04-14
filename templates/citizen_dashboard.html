@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>SmartGov - My Complaints</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        .header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+        .meta { color: #555; margin-top: 0.25rem; }
+        .status-section { margin-top: 2rem; }
+        .status-heading { padding: 0.75rem 1rem; background: #f2f5f8; border: 1px solid #d7e0e8; border-radius: 8px; }
+        .complaints-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 1rem; }
+        .complaint-card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; background: #fff; }
+        .complaint-card h3 { margin-top: 0; margin-bottom: 0.5rem; }
+        .complaint-card p { margin: 0.4rem 0; }
+        .muted { color: #666; }
+        .empty { margin-top: 2rem; padding: 1rem; background: #fafafa; border: 1px solid #ddd; border-radius: 8px; }
+        .nav a { margin-left: 1rem; }
+    </style>
+</head>
+<body>
+<div class="header">
+    <div>
+        <h1>My Complaints</h1>
+        <div class="meta">Signed in as {{ email }}</div>
+    </div>
+    <div class="nav">
+        <a href="/">Submit complaint</a>
+        <a href="/track">Track by ticket ID</a>
+        <a href="/citizen/logout">Logout</a>
+    </div>
+</div>
+
+{% if grouped_complaints %}
+    {% for status, complaints in grouped_complaints %}
+        <section class="status-section">
+            <div class="status-heading">
+                <strong>{{ format_status_label(status) }}</strong>
+                <span class="muted">({{ complaints|length }} complaint{% if complaints|length != 1 %}s{% endif %})</span>
+            </div>
+
+            <div class="complaints-grid">
+                {% for complaint in complaints %}
+                    <article class="complaint-card">
+                        <h3>{{ complaint.subject }}</h3>
+                        <p><strong>Ticket:</strong> {{ complaint.ticket_id or 'Not assigned yet' }}</p>
+                        <p><strong>Location:</strong> {{ complaint.location }}</p>
+                        <p><strong>Description:</strong> {{ complaint.description }}</p>
+                        <p><strong>Latest update:</strong> {{ complaint.progress_note or 'No update yet.' }}</p>
+                        <p><strong>ETA:</strong> {{ complaint.estimated_resolution_at.strftime('%Y-%m-%d %H:%M') if complaint.estimated_resolution_at else 'Not available' }}</p>
+                        {% if complaint.cancel_reason %}
+                            <p><strong>Admin note:</strong> {{ complaint.cancel_reason }}</p>
+                        {% endif %}
+                        <p class="muted">Submitted: {{ complaint.created_at.strftime('%Y-%m-%d %H:%M') if complaint.created_at else '-' }}</p>
+                    </article>
+                {% endfor %}
+            </div>
+        </section>
+    {% endfor %}
+{% else %}
+    <div class="empty">
+        <strong>No complaints found for this email yet.</strong>
+        <p class="muted">If this is a new email address, that is expected. Once complaints are submitted with this email, they will appear here automatically.</p>
+    </div>
+{% endif %}
+</body>
+</html>

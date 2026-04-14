@@ -92,12 +92,20 @@ FROM_EMAIL=your_email@gmail.com
 uvicorn main:app --reload
 ```
 
+To process complaints from the terminal without calling the HTTP endpoint:
+
+```bash
+python process_complaints.py
+python process_complaints.py --id 3
+```
+
 ### 5. Open in browser
 
 | Page            | URL                        |
 |-----------------|----------------------------|
 | Citizen form    | http://localhost:8000      |
 | Track status    | http://localhost:8000/track?ticket_id=*CMP0001* (use your ticket ID) |
+| Citizen login   | http://localhost:8000/citizen/login |
 | Admin login     | http://localhost:8000/admin/login |
 | Worker login    | http://localhost:8000/worker/login |
 | API docs        | http://localhost:8000/docs |
@@ -120,7 +128,10 @@ uvicorn main:app --reload
 | ticket_id       | string   | e.g. CMP0001 (set after RPA process) |
 | department      | string   | Set by classifier when processed |
 | rpa_processed   | boolean  | Default false |
-| status          | string   | PENDING, IN_PROGRESS, RESOLVED, CLOSED, CANCELLED |
+| status          | string   | Stage-based workflow status such as SUBMITTED, ASSIGNED, WORK_IN_PROGRESS, REOPENED, CLOSED |
+| progress_percent| integer  | Legacy field retained for compatibility; no longer used in the main UI |
+| progress_note   | text     | Latest worker update shown to the citizen |
+| estimated_resolution_at | datetime | Worker-estimated resolution date/time |
 | cancel_reason   | string   | Set when admin cancels |
 | assigned_to     | string   | Worker username (set when RPA processes complaint) |
 | proof_image_path| string   | Path under uploads/proofs/ (set when worker completes task) |
@@ -136,7 +147,7 @@ Startup migration in `migrations.py` adds missing columns (e.g. `ticket_id`, `de
 ### 1. Citizen submits complaint
 
 1. User opens **http://localhost:8000** and fills the form (subject, description, location, **email**, optional image).
-2. **POST /submit-complaint** saves the complaint with `status=PENDING`, `rpa_processed=false`.
+2. **POST /submit-complaint** saves the complaint with `status=SUBMITTED`, `rpa_processed=false`.
 3. **Email 1** is sent (if SMTP is configured): *“Your complaint has been received… You will receive another email once your complaint is accepted for processing.”*
 
 ### 2. RPA bot processes complaints
@@ -165,14 +176,20 @@ Startup migration in `migrations.py` adds missing columns (e.g. `ticket_id`, `de
 
 - Workers open **http://localhost:8000/worker/login** and sign in with credentials from `workers.json`.
 - After login they are redirected to **/worker/tasks**, which shows **only complaints assigned to them** (`assigned_to` = their username) that are not yet RESOLVED or CANCELLED.
-- Each task has a **Complete** link that goes to the completion form.
+- Each task has an **Update / Complete** link that lets the worker:
+  - set a **progress percentage**
+  - write a **progress note** visible to the citizen
+  - provide an **estimated resolution date/time**
+  - finally mark the complaint as resolved once work is done
 
 ### 5. Completing work
 
 - On **GET /worker/complete/{complaint_id}**, the worker sees the complaint details and a form to:
-  - **Upload an image** as proof of work (optional but recommended).
-  - **Write a description** (completion notes), required.
+  - update the complaint’s current work stage and ETA
+  - **Upload an image** as proof of work (optional but recommended) when done
+  - **Write a description** (completion notes), required, when resolving
 - On **POST /worker/complete/{complaint_id}**:
+  - Progress is set to **100%** and ETA is cleared.
   - The proof image is saved under `uploads/proofs/` with a unique filename; `proof_image_path` and `proof_description` are stored on the complaint.
   - Complaint **status** is set to **RESOLVED**.
   - An **email is sent to the citizen** with a verification link.
@@ -195,6 +212,11 @@ Startup migration in `migrations.py` adds missing columns (e.g. `ticket_id`, `de
 |--------|----------|-------------|
 | GET    | `/` | Citizen complaint form (HTML) |
 | GET    | `/track?ticket_id=<id>` | Check status by ticket ID (e.g. CMP0001). Without query: search form; with `ticket_id`: complaint details, status, and (when resolved) the worker’s proof image and completion comment (HTML). |
+| GET    | `/citizen/login` | Citizen email login page for OTP-based dashboard access. |
+| POST   | `/citizen/login` | Send a one-time password to the citizen email address. |
+| POST   | `/citizen/verify` | Verify OTP and sign in the citizen. |
+| GET    | `/citizen/complaints` | Show all complaints linked to the logged-in citizen email, grouped by status. |
+| GET    | `/citizen/logout` | Clear citizen session and return to login. |
 | POST   | `/submit-complaint` | Submit complaint (form: subject, description, location, email, optional image). Sends “received” email. |
 | GET    | `/admin/login` | Admin login form (HTML) |
 | POST   | `/admin/login` | Admin login (form: username, password). Redirects to `/admin/complaints`. |
@@ -206,6 +228,7 @@ Startup migration in `migrations.py` adds missing columns (e.g. `ticket_id`, `de
 | GET    | `/worker/logout` | Clear worker session, redirect to login. |
 | GET    | `/worker/tasks` | List tasks assigned to the logged-in worker (HTML). Requires worker session. |
 | GET    | `/worker/complete/{id}` | Form to upload proof image and completion description. Requires worker session; complaint must be assigned to worker. |
+| POST   | `/worker/update/{id}` | Save worker status tag, latest update note, and ETA. Requires worker session. |
 | POST   | `/worker/complete/{id}` | Submit proof + description; set status=RESOLVED; send resolution email to citizen. Requires worker session. |
 | GET    | `/rpa/unprocessed-complaints` | JSON list of complaints with `rpa_processed=false` (for RPA bot). |
 | POST   | `/rpa/process-complaint?id=&lt;id&gt;` | Process one complaint: assign ticket + department + worker or reject. Sends acceptance/rejection email. |
@@ -298,8 +321,9 @@ Worker session is kept in memory and via `worker_session` cookie.
 
 ## Status and cancellation
 
-- **Status enum** (`models.ComplaintStatus`): `PENDING`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`, `CANCELLED`.
-- New complaints start as **PENDING**. RPA sets **CANCELLED** when department is “General Department”; admin can set **CANCELLED** with a reason via the admin UI.
+- **Status enum** (`models.ComplaintStatus`) now supports detailed stage tags such as `SUBMITTED`, `UNDER_REVIEW`, `ASSIGNED`, `VISIT_SCHEDULED`, `WORK_IN_PROGRESS`, `WAITING_FOR_MATERIALS`, `RESOLUTION_PENDING_CONFIRMATION`, `REOPENED`, `ESCALATED`, `CANCELLED`, and `CLOSED`.
+- New complaints start as **SUBMITTED**. If the department cannot be determined automatically, the complaint moves to **UNDER_REVIEW** for admin action instead of being auto-rejected.
+- Workers now update stage-based statuses plus ETA; admins handle exception/control statuses such as **REJECTED**, **CANCELLED**, **ESCALATED**, and **REOPENED**.
 - **Cancel reasons** (fixed list): “Doesn't belong to the department”, “Unable to accept image”, “Rejected by the authorities”.
 
 ---

@@ -1,18 +1,19 @@
 import os
 import random
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db
 from helpers.email_utils import send_email
-from models import Complaint, ComplaintStatus
+from models import CitizenComplaintLink, CitizenLoginOTP, Complaint, ComplaintStatus
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -24,6 +25,125 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter()
 
+CITIZEN_SESSIONS: dict[str, dict[str, str]] = {}
+
+
+def _normalize_email(email: str | None) -> str:
+    return (email or "").strip().lower()
+
+
+def _get_citizen_session(request: Request) -> dict | None:
+    token = request.cookies.get("citizen_session")
+    if not token:
+        return None
+    return CITIZEN_SESSIONS.get(token)
+
+
+def _format_status_label(value: str) -> str:
+    return value.replace("_", " ").title()
+
+
+def _sync_citizen_links(db: Session, email: str) -> None:
+    """
+    Ensure the citizen link table reflects complaints already stored with this email.
+    """
+    normalized_email = _normalize_email(email)
+    if not normalized_email:
+        return
+
+    linked_ids = {
+        row.complaint_id
+        for row in db.query(CitizenComplaintLink)
+        .filter(CitizenComplaintLink.email == normalized_email)
+        .all()
+    }
+
+    complaints = (
+        db.query(Complaint)
+        .filter(func.lower(Complaint.email) == normalized_email)
+        .order_by(Complaint.id)
+        .all()
+    )
+
+    created = False
+    for complaint in complaints:
+        if complaint.id in linked_ids:
+            continue
+        db.add(
+            CitizenComplaintLink(
+                email=normalized_email,
+                complaint_id=complaint.id,
+            )
+        )
+        created = True
+
+    if created:
+        db.commit()
+
+
+def _get_grouped_citizen_complaints(db: Session, email: str) -> list[tuple[str, list[Complaint]]]:
+    normalized_email = _normalize_email(email)
+    _sync_citizen_links(db, normalized_email)
+
+    complaint_ids = [
+        row.complaint_id
+        for row in db.query(CitizenComplaintLink)
+        .filter(CitizenComplaintLink.email == normalized_email)
+        .order_by(CitizenComplaintLink.created_at.desc())
+        .all()
+    ]
+
+    if not complaint_ids:
+        return []
+
+    complaints = (
+        db.query(Complaint)
+        .filter(Complaint.id.in_(complaint_ids))
+        .order_by(Complaint.created_at.desc(), Complaint.id.desc())
+        .all()
+    )
+
+    complaints_by_status: dict[str, list[Complaint]] = {}
+    for complaint in complaints:
+        complaints_by_status.setdefault(complaint.status, []).append(complaint)
+
+    preferred_order = [
+        ComplaintStatus.SUBMITTED.value,
+        ComplaintStatus.UNDER_REVIEW.value,
+        ComplaintStatus.ACCEPTED.value,
+        ComplaintStatus.ASSIGNED.value,
+        ComplaintStatus.VISIT_SCHEDULED.value,
+        ComplaintStatus.VISIT_IN_PROGRESS.value,
+        ComplaintStatus.VISIT_COMPLETED.value,
+        ComplaintStatus.WORK_PLANNED.value,
+        ComplaintStatus.WORK_IN_PROGRESS.value,
+        ComplaintStatus.PARTIALLY_RESOLVED.value,
+        ComplaintStatus.WAITING_FOR_MATERIALS.value,
+        ComplaintStatus.WAITING_FOR_APPROVAL.value,
+        ComplaintStatus.WAITING_FOR_BUDGET.value,
+        ComplaintStatus.WAITING_FOR_OTHER_DEPARTMENT.value,
+        ComplaintStatus.WAITING_FOR_CITIZEN_RESPONSE.value,
+        ComplaintStatus.WAITING_FOR_ACCESS.value,
+        ComplaintStatus.WEATHER_DELAY.value,
+        ComplaintStatus.VENDOR_PENDING.value,
+        ComplaintStatus.FOLLOW_UP_REQUIRED.value,
+        ComplaintStatus.RESOLUTION_PENDING_CONFIRMATION.value,
+        ComplaintStatus.RESOLVED.value,
+        ComplaintStatus.REOPENED.value,
+        ComplaintStatus.ESCALATED.value,
+        ComplaintStatus.REJECTED.value,
+        ComplaintStatus.CANCELLED.value,
+        ComplaintStatus.CLOSED.value,
+        ComplaintStatus.ON_HOLD.value,
+        ComplaintStatus.DUPLICATE.value,
+        ComplaintStatus.TRANSFERRED.value,
+        ComplaintStatus.UNSERVICEABLE.value,
+    ]
+    status_order = {status: index for index, status in enumerate(preferred_order)}
+    ordered_statuses = list(complaints_by_status.keys())
+    ordered_statuses.sort(key=lambda status: status_order.get(status, 999))
+    return [(status, complaints_by_status[status]) for status in ordered_statuses]
+
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -31,6 +151,161 @@ async def index(request: Request):
     Render the main complaint submission form.
     """
     return templates.TemplateResponse("index.html", {"request": request})
+
+
+@router.get("/citizen/login", response_class=HTMLResponse)
+async def citizen_login_form(request: Request):
+    """Render the citizen email login page."""
+    return templates.TemplateResponse(
+        "citizen_login.html",
+        {
+            "request": request,
+            "message": None,
+            "error": None,
+            "email": "",
+        },
+    )
+
+
+@router.post("/citizen/login", response_class=HTMLResponse)
+async def citizen_login_send_otp(
+    request: Request,
+    email: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Issue an OTP to the citizen's email address."""
+    normalized_email = _normalize_email(email)
+    if not normalized_email:
+        return templates.TemplateResponse(
+            "citizen_login.html",
+            {
+                "request": request,
+                "message": None,
+                "error": "Please enter a valid email address.",
+                "email": "",
+            },
+            status_code=400,
+        )
+
+    _sync_citizen_links(db, normalized_email)
+
+    otp = f"{random.randint(100000, 999999):06d}"
+    db.query(CitizenLoginOTP).filter(
+        CitizenLoginOTP.email == normalized_email,
+        CitizenLoginOTP.consumed.is_(False),
+    ).update({"consumed": True}, synchronize_session=False)
+    db.add(
+        CitizenLoginOTP(
+            email=normalized_email,
+            otp_code=otp,
+            expires_at=datetime.utcnow() + timedelta(minutes=10),
+            consumed=False,
+        )
+    )
+    db.commit()
+
+    send_email(
+        to_email=normalized_email,
+        subject="Your SmartGov login OTP",
+        body=(
+            "Dear citizen,\n\n"
+            "Use the following one-time password to sign in to your SmartGov complaint dashboard:\n"
+            f"{otp}\n\n"
+            "This OTP will expire in 10 minutes.\n"
+        ),
+    )
+
+    return templates.TemplateResponse(
+        "citizen_login.html",
+        {
+            "request": request,
+            "message": "We sent a 6-digit OTP to your email address.",
+            "error": None,
+            "email": normalized_email,
+        },
+    )
+
+
+@router.post("/citizen/verify")
+async def citizen_verify_otp(
+    request: Request,
+    email: str = Form(...),
+    otp: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Validate the citizen OTP and create a simple cookie-based session."""
+    normalized_email = _normalize_email(email)
+    cleaned_otp = (otp or "").strip()
+
+    record = (
+        db.query(CitizenLoginOTP)
+        .filter(
+            CitizenLoginOTP.email == normalized_email,
+            CitizenLoginOTP.consumed.is_(False),
+        )
+        .order_by(CitizenLoginOTP.created_at.desc())
+        .first()
+    )
+
+    if (
+        record is None
+        or record.otp_code != cleaned_otp
+        or record.expires_at < datetime.utcnow()
+    ):
+        return templates.TemplateResponse(
+            "citizen_login.html",
+            {
+                "request": request,
+                "message": None,
+                "error": "Invalid or expired OTP. Please request a new one.",
+                "email": normalized_email,
+            },
+            status_code=400,
+        )
+
+    record.consumed = True
+    _sync_citizen_links(db, normalized_email)
+    db.commit()
+
+    token = uuid4().hex
+    CITIZEN_SESSIONS[token] = {"email": normalized_email}
+
+    response = RedirectResponse(url="/citizen/complaints", status_code=303)
+    response.set_cookie("citizen_session", token, httponly=True)
+    return response
+
+
+@router.get("/citizen/complaints", response_class=HTMLResponse)
+async def citizen_complaints_dashboard(request: Request, db: Session = Depends(get_db)):
+    """Show all complaints linked to the logged-in citizen email."""
+    session = _get_citizen_session(request)
+    if session is None:
+        return RedirectResponse(url="/citizen/login", status_code=303)
+
+    email = session["email"]
+    grouped_complaints = _get_grouped_citizen_complaints(db, email)
+
+    return templates.TemplateResponse(
+        "citizen_dashboard.html",
+        {
+            "request": request,
+            "email": email,
+            "grouped_complaints": grouped_complaints,
+            "format_status_label": _format_status_label,
+        },
+    )
+
+
+@router.get("/citizen/logout")
+async def citizen_logout(request: Request):
+    """Clear citizen login session."""
+    token = request.cookies.get("citizen_session")
+    if token:
+        CITIZEN_SESSIONS.pop(token, None)
+
+    response = RedirectResponse(url="/citizen/login", status_code=303)
+    response.delete_cookie("citizen_session")
+    return response
 
 
 @router.get("/track", response_class=HTMLResponse)
@@ -86,8 +361,14 @@ async def send_verification_pin(
     if complaint is None:
         return JSONResponse({"detail": "Complaint not found."}, status_code=404)
 
-    if complaint.status != ComplaintStatus.RESOLVED.value:
-        return JSONResponse({"detail": "Verification can only be requested for resolved complaints."}, status_code=400)
+    if complaint.status not in {
+        ComplaintStatus.RESOLUTION_PENDING_CONFIRMATION.value,
+        ComplaintStatus.RESOLVED.value,
+    }:
+        return JSONResponse(
+            {"detail": "Verification can only be requested for complaints awaiting confirmation."},
+            status_code=400,
+        )
 
     pin = f"{random.randint(1000, 9999):04d}"
     complaint.verification_pin = pin
@@ -147,11 +428,16 @@ async def verify_complaint(
 
     if action not in {"confirm", "reject"}:
         result_message = "Invalid verification action."
-    elif complaint.status != ComplaintStatus.RESOLVED.value:
+    elif complaint.status not in {
+        ComplaintStatus.RESOLUTION_PENDING_CONFIRMATION.value,
+        ComplaintStatus.RESOLVED.value,
+    }:
         if complaint.status == ComplaintStatus.CLOSED.value:
             result_message = "This complaint has already been confirmed as resolved."
         elif complaint.status == ComplaintStatus.ESCALATED.value:
             result_message = "This complaint has already been escalated to higher command."
+        elif complaint.status == ComplaintStatus.REOPENED.value:
+            result_message = "This complaint has been re-opened and is awaiting department review."
         else:
             result_message = "This complaint cannot be verified in its current status."
     elif not pin or not pin.strip():
@@ -161,6 +447,8 @@ async def verify_complaint(
     else:
         if action == "confirm":
             complaint.status = ComplaintStatus.CLOSED.value
+            complaint.progress_note = "Citizen confirmed that the issue has been resolved."
+            complaint.estimated_resolution_at = None
             result_message = "Thank you. Your complaint has been confirmed as resolved and is now closed."
             send_email(
                 to_email=complaint.email,
@@ -173,17 +461,21 @@ async def verify_complaint(
                 ),
             )
         elif action == "reject":
-            complaint.status = ComplaintStatus.ESCALATED.value
+            complaint.status = ComplaintStatus.REOPENED.value
+            complaint.progress_note = (
+                "Citizen reported that the issue is still not resolved. Complaint re-opened for admin review."
+            )
+            complaint.estimated_resolution_at = None
             result_message = (
-                "Your complaint has been re-opened and escalated to higher command. "
+                "Your complaint has been re-opened. "
                 "A department officer will review it again."
             )
             send_email(
                 to_email=complaint.email,
-                subject="Complaint re-opened and escalated",
+                subject="Complaint re-opened for review",
                 body=(
                     "Dear citizen,\n\n"
-                    f"Your complaint (Ticket ID: {complaint.ticket_id}) has been re-opened and escalated to higher command.\n\n"
+                    f"Your complaint (Ticket ID: {complaint.ticket_id}) has been re-opened for administrative review.\n\n"
                     "We will review the issue again and keep you updated.\n\n"
                     "Thank you for your feedback.\n"
                 ),
@@ -219,10 +511,11 @@ async def submit_complaint(
     Steps:
     1. Optionally save uploaded image with a unique filename inside /uploads.
     2. Store complaint data in the SQLite database.
-    3. Set status to "PENDING" and created_at automatically via the ORM model.
+    3. Set status to "SUBMITTED" and created_at automatically via the ORM model.
     4. Return a simple JSON success message.
     """
 
+    normalized_email = _normalize_email(email)
     image_path_value: str | None = None
 
     # Save the uploaded file (if provided) to the uploads directory
@@ -243,7 +536,7 @@ async def submit_complaint(
         subject=subject,
         description=description,
         location=location,
-        email=email,
+        email=normalized_email,
         image_path=image_path_value,
     )
 
@@ -251,6 +544,14 @@ async def submit_complaint(
     db.add(complaint)
     db.commit()
     db.refresh(complaint)
+
+    db.add(
+        CitizenComplaintLink(
+            email=normalized_email,
+            complaint_id=complaint.id,
+        )
+    )
+    db.commit()
 
     # Send an acknowledgement email to the citizen.
     send_email(

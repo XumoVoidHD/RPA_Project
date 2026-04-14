@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from helpers.admin_utils import ADMIN_SESSIONS, ADMIN_USERS, CANCEL_REASONS, get_admin_session
 from helpers.complaint_utils import escalate_overdue_complaints
-from models import Complaint, ComplaintStatus
+from models import ADMIN_ALLOWED_STATUSES, Complaint, ComplaintStatus
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -17,6 +17,24 @@ TEMPLATES_DIR = PROJECT_ROOT / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter()
+
+ADMIN_STATUS_CHOICES = [
+    ComplaintStatus.UNDER_REVIEW.value,
+    ComplaintStatus.ACCEPTED.value,
+    ComplaintStatus.REJECTED.value,
+    ComplaintStatus.CANCELLED.value,
+    ComplaintStatus.ESCALATED.value,
+    ComplaintStatus.REOPENED.value,
+    ComplaintStatus.ON_HOLD.value,
+    ComplaintStatus.DUPLICATE.value,
+    ComplaintStatus.TRANSFERRED.value,
+    ComplaintStatus.UNSERVICEABLE.value,
+    ComplaintStatus.CLOSED.value,
+]
+
+
+def _format_status_label(value: str) -> str:
+    return value.replace("_", " ").title()
 
 
 @router.get("/admin/login", response_class=HTMLResponse)
@@ -111,6 +129,8 @@ async def admin_complaints(request: Request, db: Session = Depends(get_db)):
             "department": department,
             "complaints": complaints,
             "cancel_reasons": CANCEL_REASONS,
+            "admin_status_choices": ADMIN_STATUS_CHOICES,
+            "format_status_label": _format_status_label,
         },
     )
 
@@ -145,6 +165,56 @@ async def cancel_complaint(
 
     complaint.status = ComplaintStatus.CANCELLED.value
     complaint.cancel_reason = reason
+    complaint.progress_note = f"Admin updated complaint status to Cancelled. Reason: {reason}"
+    complaint.estimated_resolution_at = None
+
+    db.commit()
+    db.refresh(complaint)
+
+    return RedirectResponse(url="/admin/complaints", status_code=303)
+
+
+@router.post("/admin/complaints/{complaint_id}/status")
+async def update_complaint_status(
+    complaint_id: int,
+    request: Request,
+    status: str = Form(...),
+    reason: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """
+    Allow admins to apply exception and administrative statuses.
+    """
+    session = get_admin_session(request)
+    if session is None:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    complaint = db.get(Complaint, complaint_id)
+    if complaint is None:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+
+    if complaint.department != session["department"]:
+        raise HTTPException(status_code=403, detail="Cannot update complaints in another department")
+
+    if status not in ADMIN_ALLOWED_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid admin status")
+
+    cleaned_reason = reason.strip()
+    complaint.status = status
+    complaint.estimated_resolution_at = None
+
+    if cleaned_reason:
+        complaint.cancel_reason = cleaned_reason
+        complaint.progress_note = (
+            f"Admin updated complaint status to {_format_status_label(status)}. Reason: {cleaned_reason}"
+        )
+    elif status in {
+        ComplaintStatus.REJECTED.value,
+        ComplaintStatus.CANCELLED.value,
+        ComplaintStatus.ESCALATED.value,
+        ComplaintStatus.REOPENED.value,
+    }:
+        complaint.progress_note = f"Admin updated complaint status to {_format_status_label(status)}."
 
     db.commit()
     db.refresh(complaint)
@@ -187,5 +257,6 @@ async def admin_escalated_complaints(request: Request, db: Session = Depends(get
             "username": session["username"],
             "department": department,
             "complaints": complaints,
+            "format_status_label": _format_status_label,
         },
     )

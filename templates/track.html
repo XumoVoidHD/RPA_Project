@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <title>SmartGov – Track Complaint</title>
+    <title>SmartGov - Track Complaint</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 2rem; }
         form { max-width: 400px; }
@@ -13,7 +13,7 @@
             padding: 0.5rem;
         }
         button { margin-top: 1rem; padding: 0.5rem 1rem; }
-        .details { margin-top: 2rem; max-width: 560px; }
+        .details { margin-top: 2rem; max-width: 640px; }
         .details table {
             border-collapse: collapse;
             width: 100%;
@@ -23,13 +23,15 @@
             padding: 0.5rem;
             text-align: left;
         }
-        .details th { background-color: #f0f0f0; width: 140px; }
+        .details th { background-color: #f0f0f0; width: 160px; }
         .not-found { color: #a00; margin-top: 1rem; }
         .message { color: #064; background: #eef9ee; border: 1px solid #9c9; padding: 0.75rem; border-radius: 4px; margin-top: 1rem; }
         .verify-actions { margin-top: 1.5rem; padding: 1rem; background: #f7f7ff; border: 1px solid #ccd; border-radius: 6px; }
         .verify-actions a { display: inline-block; margin-right: 1rem; margin-bottom: 0.75rem; }
         .nav { margin-bottom: 1.5rem; }
         .nav a { margin-right: 1rem; }
+        .progress-card { margin-top: 1.5rem; padding: 1rem; background: #f9fbf5; border: 1px solid #d5e5ca; border-radius: 6px; }
+        .muted { color: #555; }
     </style>
 </head>
 <body>
@@ -39,7 +41,7 @@
 </div>
 
 <h1>Track your complaint</h1>
-<p>Enter your ticket ID (e.g. CMP0001) to view your report details.</p>
+<p>Enter your ticket ID (for example, CMP0001) to view your report details.</p>
 
 <form method="get" action="/track">
     <label for="ticket_id">Ticket ID</label>
@@ -63,13 +65,24 @@
             <tr><th>Subject</th><td>{{ complaint.subject }}</td></tr>
             <tr><th>Description</th><td>{{ complaint.description }}</td></tr>
             <tr><th>Location</th><td>{{ complaint.location }}</td></tr>
-            <tr><th>Department</th><td>{{ complaint.department or '—' }}</td></tr>
-            <tr><th>Status</th><td>{{ complaint.status }}</td></tr>
+            <tr><th>Department</th><td>{{ complaint.department or '-' }}</td></tr>
+            <tr><th>Status</th><td>{{ complaint.status.replace('_', ' ').title() }}</td></tr>
+            <tr><th>Estimated resolution</th><td>{{ complaint.estimated_resolution_at.strftime('%Y-%m-%d %H:%M') if complaint.estimated_resolution_at else 'Not available yet' }}</td></tr>
             {% if complaint.cancel_reason %}
             <tr><th>Cancellation reason</th><td>{{ complaint.cancel_reason }}</td></tr>
             {% endif %}
-            <tr><th>Submitted on</th><td>{{ complaint.created_at.strftime('%Y-%m-%d %H:%M') if complaint.created_at else '—' }}</td></tr>
+            <tr><th>Submitted on</th><td>{{ complaint.created_at.strftime('%Y-%m-%d %H:%M') if complaint.created_at else '-' }}</td></tr>
         </table>
+
+        {% if complaint.progress_note or complaint.estimated_resolution_at %}
+        <div class="progress-card">
+            <h3 style="margin-top: 0;">Current complaint update</h3>
+            <p><strong>{{ complaint.status.replace('_', ' ').title() }}</strong></p>
+            <p style="white-space: pre-wrap;">{{ complaint.progress_note or 'The department has accepted your complaint. A worker update will appear here once work begins.' }}</p>
+            <p class="muted">Estimated resolution: {{ complaint.estimated_resolution_at.strftime('%Y-%m-%d %H:%M') if complaint.estimated_resolution_at else 'The worker has not provided an ETA yet.' }}</p>
+        </div>
+        {% endif %}
+
         {% if complaint.proof_description or complaint.proof_image_path %}
         <h3 style="margin-top: 1.5rem;">Resolution (work completed)</h3>
         {% if complaint.proof_description %}
@@ -82,19 +95,24 @@
         {% endif %}
         {% endif %}
 
-        {% if complaint.status == 'RESOLVED' %}
+        {% if complaint.status == 'RESOLUTION_PENDING_CONFIRMATION' or complaint.status == 'RESOLVED' %}
         <div class="verify-actions">
             <p><strong>Please verify the resolution:</strong></p>
             <p>
-                <a href="#" class="verify-action-button" data-action="confirm" data-ticket-id="{{ complaint.ticket_id }}">Yes — I confirm the issue is resolved</a>
+                <a href="#" class="verify-action-button" data-action="confirm" data-ticket-id="{{ complaint.ticket_id }}">Yes - I confirm the issue is resolved</a>
                 <br />
-                <a href="#" class="verify-action-button" data-action="reject" data-ticket-id="{{ complaint.ticket_id }}">No — the issue is still not resolved</a>
+                <a href="#" class="verify-action-button" data-action="reject" data-ticket-id="{{ complaint.ticket_id }}">No - the issue is still not resolved</a>
             </p>
         </div>
         {% elif complaint.status == 'ESCALATED' %}
         <div class="verify-actions">
             <p><strong>This complaint has been escalated to higher command.</strong></p>
             <p>Our department will review your issue again.</p>
+        </div>
+        {% elif complaint.status == 'REOPENED' %}
+        <div class="verify-actions">
+            <p><strong>This complaint has been re-opened for admin review.</strong></p>
+            <p>The department will review the resolution and update the next action.</p>
         </div>
         {% elif complaint.status == 'CLOSED' %}
         <div class="verify-actions">

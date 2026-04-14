@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <title>SmartGov – {{ department }} Complaints</title>
+    <title>SmartGov - {{ department }} Complaints</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -17,6 +17,7 @@
             border: 1px solid #ccc;
             padding: 0.5rem;
             text-align: left;
+            vertical-align: top;
         }
         th {
             background-color: #f0f0f0;
@@ -48,6 +49,20 @@
             font-size: 0.85rem;
             color: #a00;
         }
+        .subtle {
+            color: #555;
+            font-size: 0.85rem;
+        }
+        .status-form {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .status-form textarea {
+            min-height: 70px;
+            width: 100%;
+            box-sizing: border-box;
+        }
     </style>
 </head>
 <body>
@@ -71,6 +86,8 @@
             <th>Location</th>
             <th>Ticket ID</th>
             <th>Status</th>
+            <th>Latest Update</th>
+            <th>ETA</th>
             <th>RPA Processed</th>
             <th>Created At</th>
             <th>Actions</th>
@@ -85,25 +102,36 @@
                 <td>{{ c.location }}</td>
                 <td>{{ c.ticket_id or "-" }}</td>
                 <td>
-                    {{ c.status }}
+                    {{ format_status_label(c.status) }}
                     {% if c.status == "CANCELLED" and c.cancel_reason %}
                         <div class="cancel-info">Reason: {{ c.cancel_reason }}</div>
                     {% endif %}
                 </td>
+                <td>
+                    <div class="subtle">{{ c.progress_note or 'No worker update yet.' }}</div>
+                </td>
+                <td>{{ c.estimated_resolution_at.strftime('%Y-%m-%d %H:%M') if c.estimated_resolution_at else '-' }}</td>
                 <td>{{ "Yes" if c.rpa_processed else "No" }}</td>
                 <td>{{ c.created_at }}</td>
                 <td>
+                    <form method="post" action="/admin/complaints/{{ c.id }}/status" class="status-form">
+                        <select name="status" required>
+                            {% for choice in admin_status_choices %}
+                                <option value="{{ choice }}">{{ format_status_label(choice) }}</option>
+                            {% endfor %}
+                        </select>
+                        <textarea name="reason" placeholder="Optional admin note or reason"></textarea>
+                        <button type="submit">Apply Status</button>
+                    </form>
                     {% if c.status != "CANCELLED" %}
-                        <form method="post" action="/admin/complaints/{{ c.id }}/cancel" class="cancel-form">
+                        <form method="post" action="/admin/complaints/{{ c.id }}/cancel" class="cancel-form" style="margin-top: 0.75rem;">
                             <select name="reason" required>
                                 {% for r in cancel_reasons %}
                                     <option value="{{ r }}">{{ r }}</option>
                                 {% endfor %}
                             </select>
-                            <button type="submit">Cancel</button>
+                            <button type="submit">Quick Cancel</button>
                         </form>
-                    {% else %}
-                        -
                     {% endif %}
                 </td>
             </tr>
@@ -116,4 +144,3 @@
 
 </body>
 </html>
-

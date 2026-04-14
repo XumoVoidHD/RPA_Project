@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>SmartGov - Citizen Login</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        .card { max-width: 520px; border: 1px solid #ddd; border-radius: 8px; padding: 1rem 1.25rem; margin-top: 1rem; }
+        label { display: block; margin-top: 1rem; }
+        input[type="email"], input[type="text"] { width: 100%; box-sizing: border-box; padding: 0.6rem; margin-top: 0.25rem; }
+        button { margin-top: 1rem; padding: 0.6rem 1rem; }
+        .message { margin-top: 1rem; padding: 0.75rem; background: #eef8ee; border: 1px solid #b8d8b8; border-radius: 6px; color: #1f5a1f; }
+        .error { margin-top: 1rem; padding: 0.75rem; background: #fff1f1; border: 1px solid #e1b3b3; border-radius: 6px; color: #7a1f1f; }
+        .nav a { margin-right: 1rem; }
+        .hint { color: #555; }
+    </style>
+</head>
+<body>
+<div class="nav">
+    <a href="/">Submit complaint</a>
+    <a href="/track">Track by ticket ID</a>
+</div>
+
+<h1>Citizen Email Login</h1>
+<p class="hint">Enter your email address to receive a one-time password. After verification, you can view all complaints linked to that email.</p>
+
+{% if message %}
+    <div class="message">{{ message }}</div>
+{% endif %}
+{% if error %}
+    <div class="error">{{ error }}</div>
+{% endif %}
+
+<div class="card">
+    <h2>Request OTP</h2>
+    <form method="post" action="/citizen/login">
+        <label for="email">Email address</label>
+        <input type="email" id="email" name="email" value="{{ email }}" required />
+        <button type="submit">Send OTP</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Verify OTP</h2>
+    <form method="post" action="/citizen/verify">
+        <label for="verify_email">Email address</label>
+        <input type="email" id="verify_email" name="email" value="{{ email }}" required />
+
+        <label for="otp">6-digit OTP</label>
+        <input type="text" id="otp" name="otp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required />
+
+        <button type="submit">Login</button>
+    </form>
+</div>
+</body>
+</html>
